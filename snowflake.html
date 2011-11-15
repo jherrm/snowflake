@@ -2,6 +2,14 @@
 <head>
 <script type="application/javascript">
 
+	/*
+		Author: Jeremy Herrman
+		For now ,this is a direct python to javascript port of Dave Menninger's Parametric Snowflake gcode generator.
+			https://github.com/davemenninger/Parametric-GCode/blob/master/para_snowflake.py
+			http://www.thingiverse.com/thing:1388
+			License: CC-BY-SA
+
+	*/
 	var G1Code;
 	(function() {
 		G1Code = function(X, Y, Z, F) {
@@ -205,7 +213,7 @@
 		}
 
 
-		//console.log(ThisGCodeStar.toString()); //output the whole snowflake (one layer)
+		console.log(ThisGCodeStar.toString()); //output the whole snowflake (one layer)
 
 		var canvas = document.getElementById("canvas");
 		var ctx = canvas.getContext("2d");

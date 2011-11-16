@@ -28,12 +28,247 @@
     hr { border: 0; width: 80%; border-bottom: 1px solid #aaa}
     .footer { text-align:center; padding-top:30px; font-style: italic; }
   </style>
+
+  <script type="text/javascript">
+
+  /*
+    Author: Jeremy Herrman
+    For now ,this is a direct python to javascript port of Dave Menninger's Parametric Snowflake gcode generator.
+      https://github.com/davemenninger/Parametric-GCode/blob/master/para_snowflake.py
+      http://www.thingiverse.com/thing:1388
+      License: CC-BY-SA
+
+  */
+  var G1Code;
+  (function() {
+    G1Code = function(X, Y, Z, F) {
+      var self = this;
+      self.X = X;
+      self.Y = Y;
+      self.Z = Z;
+      self.F = F;
+    };
+
+    var members = {
+
+      toString: function() {
+        var self = this;
+        // Added rounding
+        string = "G1 X" + self.X.toFixed(2) + " Y" + self.Y.toFixed(2) + " Z" + self.Z.toFixed(2) + " F" + self.F;
+        return string;
+      },
+
+      // Rotate the XY point of the GCode
+      rotate: function(Theta) {
+        var self = this;
+        var OldX = self.X;
+        var OldY = self.Y;
+        self.X = OldX * Math.cos(Theta) - OldY * Math.sin(Theta);
+        self.Y = OldX * Math.sin(Theta) + OldY * Math.cos(Theta);
+      },
+
+      // Add relative moves
+      relative_move: function(XMove, YMove) {
+        var self = this;
+        var OldX = self.X;
+        var OldY = self.Y;
+        self.X = OldX + XMove;
+        self.Y = OldY + YMove;
+      },
+
+      // Clone Method
+      clone: function() {
+        var self = this;
+        var CloneCode = new G1Code(self.X, self.Y, self.Z, self.F);
+        return CloneCode;
+      }
+    }
+
+    // Copy over members to prototype
+    for (var key in members) {
+      G1Code.prototype[key] = members[key];
+    };
+  })();
+
+
+  var PolyLine;
+  (function() {
+    PolyLine = function() {
+      this.listofcodes = [];
+    };
+
+    var members = {
+
+      toString: function() {
+        var self = this;
+        var string_output = "";
+        for(gcode in self.listofcodes) {
+          string_output += self.listofcodes[gcode] + "\n"
+        }
+        return string_output;
+      },
+
+      draw: function(ctx, arm_length) {
+        var self = this;
+
+        var offset = arm_length*1.2;
+        ctx.translate(offset, offset);
+        ctx.beginPath();
+        var code = self.listofcodes[0];
+        ctx.moveTo(code.X, code.Y);
+
+        for(var n=1; n < self.listofcodes.length; n++) {
+          code = self.listofcodes[n];
+          ctx.lineTo(code.X, code.Y);
+        }
+        ctx.closePath();
+        ctx.translate(-offset, -offset);
+      },
+
+      // add a single G1Code to the list
+      append: function(gcode) {
+        var self = this;
+        self.listofcodes.push(gcode);
+      },
+
+      // add another PolyLine to the end of this PolyLine
+      extend: function(polyline) {
+        var self = this;
+        for(gcode in polyline.listofcodes) {
+          self.listofcodes.push(polyline.listofcodes[gcode].clone());
+        }
+      },
+
+      // method to make a clone of the myPolyLine
+      clone: function() {
+        var self = this;
+        var ClonePolyLine = new PolyLine();
+        for(gcode in self.listofcodes) {
+          ClonePolyLine.append(self.listofcodes[gcode].clone());
+        }
+        return ClonePolyLine;
+      },
+
+      // rotate each individual G1Code within
+      rotate: function(angle) {
+        var self = this;
+        for(gcode in self.listofcodes) {
+          self.listofcodes[gcode].rotate(angle);
+        }
+      },
+
+      // mirror the list of G1Codes around the x axis
+      // this may be a counter-intuitive name - rename to mirrorY?
+      mirrorX: function() {
+        var self = this;
+        for(gcode in self.listofcodes) {
+          self.listofcodes[gcode].Y = -1*(self.listofcodes[gcode].Y);
+        }
+      },
+
+      // reverse the order of the list of G1Codes
+      reverse: function() {
+        var self = this;
+        self.listofcodes.reverse();
+      },
+
+      // bump whole list of G1Codes up in the z direction
+      bumpZ: function(layer_thickness) {
+        var self = this;
+        for(gcode in self.listofcodes) {
+          self.listofcodes[gcode].Z = self.listofcodes[gcode].Z + layer_thickness;
+        }
+      }
+    };
+
+    // Copy over members to prototype
+    for (var key in members) {
+      PolyLine.prototype[key] = members[key];
+    };
+  })();
+
+  function randomInt(from, to) {
+    return Math.floor(Math.random() * (to - from + 1) + from);
+  };
+
+
+  function draw() {
+    // make half an arm with "spikes"
+    var arm_length = 120.0;
+    var arm_thickness = 3.0;
+    //var num_spikes = 4;
+    var num_spikes = randomInt(2,5);
+    var gap_size = (arm_length/num_spikes)/2.0;
+    var spacer = 0.5;
+
+    var SpikyArm = new PolyLine();
+    var ThisGCode = new G1Code(X=arm_thickness, Y=arm_thickness/2.0, Z=1.11, F=1500)
+    SpikyArm.append(ThisGCode)
+
+    for(var spike_n=0; spike_n < num_spikes; spike_n++) {
+      // spike_length = arm_length/2.0
+      var spike_length = Math.random()*(arm_length/2.0);
+      var x1 = spacer + gap_size*((spike_n*2));
+      var y1 = arm_thickness/2.0;
+      var x2 = spacer + x1 + spike_length*Math.cos(30.0*(Math.PI/180));
+      var y2 = spike_length*Math.sin(30.0*(Math.PI/180));
+      var x3 = spacer + x1 + gap_size;
+      var y3 = arm_thickness/2.0;
+      ThisGCode = new G1Code(X=x1, Y=y1, Z=1.11, F=1500);
+      SpikyArm.append(ThisGCode);
+      ThisGCode = new G1Code(X=x2, Y=y2, Z=1.11, F=1500);
+      SpikyArm.append(ThisGCode);
+      ThisGCode = new G1Code(X=x3, Y=y3, Z=1.11, F=1500);
+      SpikyArm.append(ThisGCode);
+    }
+
+    ThisGCode = new G1Code(X=arm_length, Y=arm_thickness/2.0, Z=1.11, F=1500);
+    SpikyArm.append(ThisGCode);
+
+    // make a mirror image of the first half of the arm
+    otherHalf = SpikyArm.clone();
+    otherHalf.mirrorX();
+    otherHalf.reverse();
+
+    // make a pointy tip
+    ThisGCode = new G1Code(X=arm_length+(arm_length/10.0),Y=0,Z=1.11, F=1500);
+
+    // join em together
+    SpikyArm.append(ThisGCode);
+    SpikyArm.extend(otherHalf);
+
+    // join together 6 rotated copies of the spiky arm
+    var ThisGCodeStar = new PolyLine();
+    for(var a=0; a < 6; a++) {
+      SpikyArm.rotate(-60 * (Math.PI/180));
+      ThisGCodeStar.extend(SpikyArm);
+    }
+
+
+    // console.log(ThisGCodeStar.toString()); //output the whole snowflake (one layer)
+
+    var canvas = document.getElementById("canvas");
+    var ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "rgba(200,200,200,0.3)";
+    // ctx.translate(arm_length, arm_length);
+    ctx.fillStyle = "#3388dd";
+    ctx.globalAlpha = 1.0;
+
+    ThisGCodeStar.draw(ctx, arm_length);
+
+    ctx.fill();
+  }
+  </script>
 </head>
 
-<body>
+<body onload="draw()">
   <a href="https://github.com/jherm/snowflake"><img style="position: absolute; top: 0; right: 0; border: 0;" src="http://s3.amazonaws.com/github/ribbons/forkme_right_darkblue_121621.png" alt="Fork me on GitHub" /></a>
 
   <div id="container">
+
+    <canvas id="canvas" width="300" height="300"></canvas>
+    <button onclick="draw();">New Snowflake</button>
 
     <div class="download">
       <a href="https://github.com/jherm/snowflake/zipball/master">
@@ -46,26 +281,24 @@
       <span class="small">by <a href="https://github.com/jherm">jherm</a></span></h1>
 
     <div class="description">
-      Make 3D printable snowflakes with this webapp.
+      Eventually it will let you make 3D printable snowflakes.
+      <br/>
+      For now, it just draws snowflakes on a canvas.
     </div>
 
-    
 
-    
 
-    
 
-    
-
-    
       <h2>Authors</h2>
-      <p>Jeremy Herrman (herrmanjm@upmc.edu)<br/>      </p>
-    
+      <p>Jeremy Herrman (herrmanjm@upmc.edu)
+<br/>      </p>
 
-    
+
+
       <h2>Contact</h2>
-      <p>Jeremy Herrman (jeremy@jherrman.com)<br/>      </p>
-    
+      <p>Jeremy Herrman (jeremy@jherrman.com)
+<br/>      </p>
+
 
     <h2>Download</h2>
     <p>
